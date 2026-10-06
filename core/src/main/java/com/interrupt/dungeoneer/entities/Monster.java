@@ -452,7 +452,8 @@ public class Monster extends Actor implements Directional {
 		tickStatusEffects(delta);
 		stepUpTick(delta);
 
-		Player player = GameManager.getGame().player;
+		// Everything below reacts to this player, so monsters go after whoever is closest
+		Player player = GameManager.getGame().getNearestPlayer(x, y);
 		if(Math.abs(player.x - x) > 17 || Math.abs(player.y - y) > 17) {
 			if(walkAmbientSound != null) walkAmbientSound.pause();
 			return;
@@ -926,7 +927,7 @@ public class Monster extends Actor implements Directional {
 
 	private boolean findPathToPlayer(Level level)
 	{
-		Vector3 nextPathLocation = Game.instance.getPathfindingManager().getNextPathToTarget(level,this, Game.instance.player);
+		Vector3 nextPathLocation = Game.instance.getPathfindingManager().getNextPathToTarget(level,this, Game.instance.getNearestPlayer(x, y));
         if(nextPathLocation == null)
             return false;
 
@@ -1224,7 +1225,7 @@ public class Monster extends Actor implements Directional {
 	public void tryDamageHit(Entity target, float rangeBoost, float knockback) {
 		// Assume we're attacking the player
 		if(target == null || !target.isActive) {
-			target = Game.instance.player;
+			target = Game.instance.getNearestPlayer(x, y);
 		}
 
 		if(target == null)
@@ -1394,7 +1395,7 @@ public class Monster extends Actor implements Directional {
 
 	public Entity getAttackTarget() {
 		if(attackTarget == null || !attackTarget.isActive) {
-			return Game.instance.player;
+			return Game.instance.getNearestPlayer(x, y);
 		}
 		return attackTarget;
 	}

@@ -56,7 +56,24 @@ public class Game {
     public static int SAVE_VERSION = 1;
 
 	public float time = 0;
+
+	/**
+	 * The player controlled on this machine. Rendering, the HUD and input always follow this one.
+	 * In a multiplayer game the other players are tracked separately, see getPlayers().
+	 */
 	public Player player;
+
+	/** The most players that can share a single game. */
+	public static final int MAX_PLAYERS = 4;
+
+	/** Players controlled from other machines. Never contains the local player. */
+	private final Array<Player> remotePlayers = new Array<Player>(true, MAX_PLAYERS - 1);
+
+	/** Cached list of every player, local player first. Rebuilt by getPlayers() when it goes stale. */
+	private final Array<Player> allPlayers = new Array<Player>(true, MAX_PLAYERS);
+	private Player allPlayersLocal = null;
+	private boolean allPlayersDirty = true;
+
 	public GameInput input;
 	public static GamepadManager gamepadManager;
 
@@ -525,6 +542,69 @@ public class Game {
 
 		// keep the cache clean
 		CachePools.clearOnTick();
+	}
+
+	/**
+	 * Every player in the game, with the local player always first. In a single player game
+	 * this is just the local player. The returned list is shared and reused, so don't modify it
+	 * and don't hold on to it across ticks.
+	 */
+	public Array<Player> getPlayers() {
+		// The local player gets assigned directly in several places (new game, load, level change),
+		// so rebuild the cached list whenever it changes instead of trying to catch every assignment.
+		if(allPlayersDirty || allPlayersLocal != player) {
+			allPlayers.clear();
+			if(player != null) allPlayers.add(player);
+			allPlayers.addAll(remotePlayers);
+			allPlayersLocal = player;
+			allPlayersDirty = false;
+		}
+
+		return allPlayers;
+	}
+
+	/** Adds a player controlled from another machine. Returns false if the game is full or they are already in it. */
+	public boolean addRemotePlayer(Player remotePlayer) {
+		if(remotePlayer == null || remotePlayer == player || remotePlayers.contains(remotePlayer, true))
+			return false;
+
+		if(remotePlayers.size >= MAX_PLAYERS - 1)
+			return false;
+
+		remotePlayers.add(remotePlayer);
+		allPlayersDirty = true;
+		return true;
+	}
+
+	/** Removes a player controlled from another machine, for example when they disconnect. */
+	public void removeRemotePlayer(Player remotePlayer) {
+		if(remotePlayers.removeValue(remotePlayer, true))
+			allPlayersDirty = true;
+	}
+
+	/**
+	 * The closest living player to a point on the floor. If every player is dead this falls back
+	 * to the local player, so single player behaves exactly as it did before there was a player list.
+	 */
+	public Player getNearestPlayer(float x, float y) {
+		Array<Player> players = getPlayers();
+
+		Player nearest = null;
+		float nearestDist = Float.MAX_VALUE;
+		for(int i = 0; i < players.size; i++) {
+			Player p = players.get(i);
+			if(p.isDead) continue;
+
+			float dx = p.x - x;
+			float dy = p.y - y;
+			float dist = (dx * dx) + (dy * dy);
+			if(dist < nearestDist) {
+				nearest = p;
+				nearestDist = dist;
+			}
+		}
+
+		return nearest != null ? nearest : player;
 	}
 
 	public void changeLevel(Stairs stair)
