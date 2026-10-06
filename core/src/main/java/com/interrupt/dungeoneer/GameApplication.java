@@ -161,6 +161,10 @@ public class GameApplication extends Game {
     }
 
     public static boolean isMobile() {
+         // The desktop launcher loads options before the libGDX application exists, so Gdx.app can be null here.
+         // Mobile builds always have it, so no app means we're starting up on desktop.
+         if (Gdx.app == null) return false;
+
          if (Gdx.app.getType() == Application.ApplicationType.Android) return true;
          if (Gdx.app.getType() == Application.ApplicationType.iOS) return true;
 
