@@ -266,9 +266,9 @@ public class Missile extends Item implements Directional {
         if (e == owner || checking == e) return false;
         else if (checking instanceof Model && checking.isStatic)
             return false; // don't let missiles collide with static meshes
-        else if (checking != null && checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player)
+        else if (checking != null && checking.ignorePlayerCollision && e instanceof Player)
             return false;
-        else if (checking != null && e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player)
+        else if (checking != null && e.ignorePlayerCollision && checking instanceof Player)
             return false;
         else if (checking != null && e.isDynamic && checking.collidesWith == CollidesWith.staticOnly)
             return false;
@@ -634,8 +634,8 @@ public class Missile extends Item implements Directional {
     protected void pickup(Player player) {
         this.resetState();
 
-        for (int i = 0; i < Game.instance.player.inventory.size; i++) {
-            Item check = Game.instance.player.inventory.get(i);
+        for (int i = 0; i < player.inventory.size; i++) {
+            Item check = player.inventory.get(i);
             if (check instanceof ItemStack && ((ItemStack) check).stackType.equals(this.stackType)) {
                 ItemStack stack = (ItemStack) check;
                 stack.count++;
@@ -644,7 +644,7 @@ public class Missile extends Item implements Directional {
             }
         }
 
-        if (!Game.instance.player.addToInventory(new ItemStack(Game.instance.itemManager.Copy(Missile.class, this), 1, name))) {
+        if (!player.addToInventory(new ItemStack(Game.instance.itemManager.Copy(Missile.class, this), 1, name))) {
             Game.ShowMessage(StringManager.get("items.Missile.noRoomText"), 1f);
         }
     }

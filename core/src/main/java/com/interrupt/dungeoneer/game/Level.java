@@ -2180,8 +2180,8 @@ public class Level {
 			Entity e = toCheck.get(i);
 			if(e.isSolid && e != checking && e.isActive)
 			{
-				if(checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player) continue;
-				if(e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player) continue;
+				if(checking.ignorePlayerCollision && e instanceof Player) continue;
+				if(e.ignorePlayerCollision && checking instanceof Player) continue;
 				if(e.isDynamic && checking.collidesWith == CollidesWith.staticOnly) continue;
 
 				//MetricsCore.count("entityCollisionCheck");
@@ -2227,8 +2227,8 @@ public class Level {
 			Entity e = toCheck.get(i);
 			if(e.isSolid && e != checking && e.isActive)
 			{
-				if(checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player) continue;
-				else if(e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player) continue;
+				if(checking.ignorePlayerCollision && e instanceof Player) continue;
+				else if(e.ignorePlayerCollision && checking instanceof Player) continue;
 				else if(e.isDynamic && checking.collidesWith == CollidesWith.staticOnly) continue;
 				else if(e.collidesWith == CollidesWith.staticOnly && checking.isDynamic) continue;
 				else if(e.collidesWith == CollidesWith.nonActors && checking instanceof Actor) continue;
@@ -2268,8 +2268,8 @@ public class Level {
             Entity e = toCheck.get(i);
             if(e.isSolid && e != checking && e.isActive)
             {
-                if(checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player) continue;
-                else if(e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player) continue;
+                if(checking.ignorePlayerCollision && e instanceof Player) continue;
+                else if(e.ignorePlayerCollision && checking instanceof Player) continue;
                 else if(e.isDynamic && checking.collidesWith == CollidesWith.staticOnly) continue;
                 else if(e.collidesWith == CollidesWith.staticOnly && checking.isDynamic) continue;
                 else if(e.collidesWith == CollidesWith.nonActors && checking instanceof Actor) continue;
@@ -2310,8 +2310,8 @@ public class Level {
 			Entity e = toCheck.get(i);
 			if(e.isSolid && e != checking && e.isActive)
 			{
-				if(checking != null && checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player) continue;
-				else if(checking != null && e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player) continue;
+				if(checking != null && checking.ignorePlayerCollision && e instanceof Player) continue;
+				else if(checking != null && e.ignorePlayerCollision && checking instanceof Player) continue;
 				else if(checking != null && e.isDynamic && checking.collidesWith == CollidesWith.staticOnly) continue;
 				else if(checking != null && e.collidesWith == CollidesWith.staticOnly && checking.isDynamic) continue;
 				else if(checking != null && e.collidesWith == CollidesWith.nonActors && checking instanceof Actor) continue;
@@ -2351,8 +2351,8 @@ public class Level {
 			Entity e = toCheck.get(i);
 			if(e.isSolid && e != checking && e.isActive && e != ignore)
 			{
-				if(checking != null && checking.ignorePlayerCollision && Game.instance.player != null && e == Game.instance.player) continue;
-				else if(checking != null && e.ignorePlayerCollision && Game.instance.player != null && checking == Game.instance.player) continue;
+				if(checking != null && checking.ignorePlayerCollision && e instanceof Player) continue;
+				else if(checking != null && e.ignorePlayerCollision && checking instanceof Player) continue;
 				else if(checking != null && e.isDynamic && checking.collidesWith == CollidesWith.staticOnly) continue;
 				else if(checking != null && e.collidesWith == CollidesWith.staticOnly && checking.isDynamic) continue;
 				else if(checking != null && e.collidesWith == CollidesWith.nonActors && checking instanceof Actor) continue;
@@ -2402,17 +2402,21 @@ public class Level {
 
 	public boolean checkPlayerCollision(float x, float y, float z, float width, float height)
 	{
-		Player player = GameManager.getGame().player;
-		float xx1 = player.x - player.collision.x - width;
-		float xx2 = player.x + player.collision.x + width;
-		float yy1 = player.y - player.collision.y - width;
-		float yy2 = player.y + player.collision.y + width;
+		// True if any player is in the way, not just the one on this machine
+		Array<Player> players = GameManager.getGame().getPlayers();
+		for(int i = 0; i < players.size; i++) {
+			Player player = players.get(i);
+			float xx1 = player.x - player.collision.x - width;
+			float xx2 = player.x + player.collision.x + width;
+			float yy1 = player.y - player.collision.y - width;
+			float yy2 = player.y + player.collision.y + width;
 
-		// simple AABB test
-		if(x > xx1 && x < xx2 && y > yy1 && y < yy2)
-		{
-			if(Math.abs(z - player.z) < height)
-				return true;
+			// simple AABB test
+			if(x > xx1 && x < xx2 && y > yy1 && y < yy2)
+			{
+				if(Math.abs(z - player.z) < height)
+					return true;
+			}
 		}
 		return false;
 	}
@@ -2621,9 +2625,14 @@ public class Level {
 
 			// don't generate if the player is too close, or another entity is already nearby
 			if(!spawnMonsters) return;
-			if(!player.isHoldingOrb && canSee(xPos + 0.5f, yPos + 0.5f, player.x, player.y)) return;
-			if(!player.isHoldingOrb && Math.abs(xPos - player.x) <= 4 && Math.abs(yPos - player.y) <= 4) return;
-			else if(player.isHoldingOrb && Math.abs(xPos - player.x) <= 1 && Math.abs(yPos - player.y) <= 1) return;
+			// (with several players, none of them can be close to or watching the spot)
+			Array<Player> players = Game.instance.getPlayers();
+			for(int p = 0; p < players.size; p++) {
+				Player other = players.get(p);
+				if(!player.isHoldingOrb && canSee(xPos + 0.5f, yPos + 0.5f, other.x, other.y)) return;
+				if(!player.isHoldingOrb && Math.abs(xPos - other.x) <= 4 && Math.abs(yPos - other.y) <= 4) return;
+				else if(player.isHoldingOrb && Math.abs(xPos - other.x) <= 1 && Math.abs(yPos - other.y) <= 1) return;
+			}
 
 			if(checkEntityCollision(xPos + 0.5f, yPos + 0.5f, 0, 0.5f) == null)
 			{

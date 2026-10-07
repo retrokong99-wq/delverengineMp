@@ -307,7 +307,8 @@ public class Item extends Entity {
 	{
 		if(Math.abs(xa) >= 0.01f || Math.abs(ya) >= 0.01f || Math.abs(za) >= 0.01f) return;
 
-		if(Game.instance.player.addToInventory(this))
+		// Whoever walked into the item gets it, which isn't always the local player
+		if(player.addToInventory(this))
 		{
 			isActive = false;
 
