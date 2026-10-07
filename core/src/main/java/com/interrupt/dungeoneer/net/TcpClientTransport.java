@@ -7,6 +7,8 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import com.interrupt.dungeoneer.net.NetMessage.Hello;
+import com.interrupt.dungeoneer.net.NetMessage.LevelBegin;
+import com.interrupt.dungeoneer.net.NetMessage.LevelChunk;
 import com.interrupt.dungeoneer.net.NetMessage.PlayerLeft;
 import com.interrupt.dungeoneer.net.NetMessage.PlayerState;
 import com.interrupt.dungeoneer.net.NetMessage.Reject;
@@ -119,8 +121,9 @@ public final class TcpClientTransport implements NetTransport, Connection.Handle
             return;
         }
 
-        // Once joined, the host may only tell us where players are and who has left
-        if (message instanceof PlayerState || message instanceof PlayerLeft) {
+        // Once joined, the host may tell us where players are, who has left, and send us the level
+        if (message instanceof PlayerState || message instanceof PlayerLeft
+                || message instanceof LevelBegin || message instanceof LevelChunk) {
             events.add(NetEvent.message(NetProtocol.HOST_PEER_ID, message));
         }
         else {

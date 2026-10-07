@@ -10,7 +10,7 @@ public final class NetProtocol {
     private NetProtocol() {}
 
     /** Bumped whenever the messages change, so a host and a client on different builds refuse each other. */
-    public static final int PROTOCOL_VERSION = 1;
+    public static final int PROTOCOL_VERSION = 2;
 
     /** Players in one game, the host included. */
     public static final int MAX_PLAYERS = 4;
@@ -29,6 +29,14 @@ public final class NetProtocol {
     public static final int CONNECT_TIMEOUT_MS = 5000;
 
     public static final int DEFAULT_PORT = 7777;
+
+    /** A level is far bigger than one message, so it travels in pieces of this size. */
+    public static final int LEVEL_CHUNK_BYTES = 8000;
+
+    /** The biggest level a client will agree to receive. */
+    public static final int MAX_LEVEL_BYTES = 16 * 1024 * 1024;
+
+    public static final int MAX_LEVEL_CHUNKS = (MAX_LEVEL_BYTES + LEVEL_CHUNK_BYTES - 1) / LEVEL_CHUNK_BYTES;
 
     /** True for a peer id that can belong to a player. */
     public static boolean isValidPeerId(int peerId) {

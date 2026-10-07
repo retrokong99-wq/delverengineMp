@@ -15,6 +15,7 @@ import com.interrupt.dungeoneer.net.NetMessage.*;
 import java.io.*;
 import java.net.Socket;
 import java.util.*;
+import java.util.zip.CRC32;
 
 public class NetSelfTest {
     static int failures = 0;
@@ -179,6 +180,18 @@ public class NetSelfTest {
         raw.close();
         waitFor(new Cond() { public boolean ok() { return false; } }, ha, haRec, 300);
 
+        // ---- a client trying to push a level at the host ----
+        raw = new Socket("127.0.0.1", port);
+        rawOut = new DataOutputStream(raw.getOutputStream());
+        rawIn = new DataInputStream(raw.getInputStream());
+        raw.setSoTimeout(3000);
+        writeFrame(rawOut, new Hello(NetProtocol.PROTOCOL_VERSION, "sneaky").toBytes());
+        readFrame(rawIn); // welcome
+        writeFrame(rawOut, new LevelBegin(100, 1, 0).toBytes());
+        check("a client sending a level to the host gets dropped", closedByPeer(raw, 3000));
+        raw.close();
+        waitFor(new Cond() { public boolean ok() { return false; } }, ha, haRec, 300);
+
         // ---- fill the game: B and C join, D is turned away ----
         final TcpClientTransport b = new TcpClientTransport("Bob");
         final TcpClientTransport c = new TcpClientTransport("Cara");
@@ -217,6 +230,98 @@ public class NetSelfTest {
         final Recorder[] allERec = {hostRec, bRec, cRec, eRec};
         waitFor(new Cond() { public boolean ok() { return eRec.connected.size() == 1; } }, allE, allERec, 3000);
         check("Eve takes the free slot 1", e.getLocalPeerId() == 1);
+
+        // ---- a big level goes from the host to Bob only, in order, and arrives intact ----
+        byte[] level = new byte[1500017]; // deliberately not a multiple of the chunk size
+        new Random(42).nextBytes(level);
+        LevelUpload upload = new LevelUpload(level);
+        LevelDownload download = new LevelDownload();
+        check("a 1.5 MB level becomes the expected number of messages", upload.getMessageCount() == 1 + (level.length + NetProtocol.LEVEL_CHUNK_BYTES - 1) / NetProtocol.LEVEL_CHUNK_BYTES);
+
+        final NetTransport[] fourWay = {host, b, c, e};
+        final Recorder[] fourWayRec = {hostRec, bRec, cRec, eRec};
+        int fed = 0;
+        boolean transferOk = true;
+        long transferEnd = System.currentTimeMillis() + 15000;
+        try {
+            while (!download.isComplete() && System.currentTimeMillis() < transferEnd) {
+                upload.pump(host, 2, 16);
+                for (int i = 0; i < fourWay.length; i++) fourWay[i].poll(fourWayRec[i]);
+
+                while (fed < bRec.messages.size()) {
+                    NetMessage m = bRec.messages.get(fed++);
+                    if (m instanceof LevelBegin || m instanceof LevelChunk) download.accept(m);
+                }
+                Thread.sleep(2);
+            }
+        } catch (IOException ex) {
+            transferOk = false;
+            System.out.println("      transfer error: " + ex.getMessage());
+        }
+        check("the level arrives complete and Bob's connection survives the burst", transferOk && download.isComplete() && upload.isDone() && bRec.disconnected.isEmpty());
+        check("the received level is identical byte for byte", download.isComplete() && Arrays.equals(level, download.getData()));
+        check("progress reads 100% when done", download.getProgress() == 1f);
+        boolean othersGotLevel = false;
+        for (NetMessage m : cRec.messages) if (m instanceof LevelChunk || m instanceof LevelBegin) othersGotLevel = true;
+        for (NetMessage m : eRec.messages) if (m instanceof LevelChunk || m instanceof LevelBegin) othersGotLevel = true;
+        check("Cara and Eve did not receive Bob's level", !othersGotLevel);
+
+        // ---- level pieces that break the rules are refused ----
+        byte[] small = new byte[20000];
+        new Random(7).nextBytes(small);
+        CRC32 smallCrc = new CRC32();
+        smallCrc.update(small, 0, small.length);
+        int goodCrc = (int) smallCrc.getValue();
+
+        LevelDownload d1 = new LevelDownload();
+        d1.accept(new LevelBegin(20000, 3, goodCrc ^ 1));
+        d1.accept(new LevelChunk(0, Arrays.copyOfRange(small, 0, 8000)));
+        d1.accept(new LevelChunk(1, Arrays.copyOfRange(small, 8000, 16000)));
+        boolean damaged = false;
+        try { d1.accept(new LevelChunk(2, Arrays.copyOfRange(small, 16000, 20000))); } catch (IOException ex) { damaged = true; }
+        check("a level whose checksum does not match is refused", damaged && !d1.isComplete());
+
+        LevelDownload d2 = new LevelDownload();
+        d2.accept(new LevelBegin(20000, 3, goodCrc));
+        boolean outOfOrder = false;
+        try { d2.accept(new LevelChunk(1, Arrays.copyOfRange(small, 8000, 16000))); } catch (IOException ex) { outOfOrder = true; }
+        check("a piece out of order is refused", outOfOrder);
+
+        LevelDownload d3 = new LevelDownload();
+        boolean early = false;
+        try { d3.accept(new LevelChunk(0, new byte[8000])); } catch (IOException ex) { early = true; }
+        check("a piece before the announcement is refused", early);
+
+        LevelDownload d4 = new LevelDownload();
+        d4.accept(new LevelBegin(20000, 3, goodCrc));
+        boolean twice = false;
+        try { d4.accept(new LevelBegin(20000, 3, goodCrc)); } catch (IOException ex) { twice = true; }
+        check("a second announcement is refused", twice);
+
+        LevelDownload d5 = new LevelDownload();
+        d5.accept(new LevelBegin(20000, 3, goodCrc));
+        boolean shortPiece = false;
+        try { d5.accept(new LevelChunk(0, new byte[7999])); } catch (IOException ex) { shortPiece = true; }
+        check("a piece of the wrong size is refused", shortPiece);
+
+        LevelDownload d6 = new LevelDownload();
+        d6.accept(new LevelBegin(20000, 3, goodCrc));
+        d6.accept(new LevelChunk(0, Arrays.copyOfRange(small, 0, 8000)));
+        d6.accept(new LevelChunk(1, Arrays.copyOfRange(small, 8000, 16000)));
+        d6.accept(new LevelChunk(2, Arrays.copyOfRange(small, 16000, 20000)));
+        boolean afterDone = false;
+        try { d6.accept(new LevelChunk(3, new byte[10])); } catch (IOException ex) { afterDone = true; }
+        check("a good small level completes, and anything after it is refused", d6.isComplete() && Arrays.equals(small, d6.getData()) && afterDone);
+
+        boolean tooBig = false, wrongCount = false, bigChunk = false, negativeChunk = false, emptyUpload = false, earlyData = false;
+        try { NetMessage.fromBytes(new LevelBegin(NetProtocol.MAX_LEVEL_BYTES + 1, NetProtocol.MAX_LEVEL_CHUNKS + 1, 0).toBytes()); } catch (IOException ex) { tooBig = true; }
+        try { NetMessage.fromBytes(new LevelBegin(20000, 2, 0).toBytes()); } catch (IOException ex) { wrongCount = true; }
+        try { NetMessage.fromBytes(new LevelChunk(0, new byte[NetProtocol.LEVEL_CHUNK_BYTES + 1]).toBytes()); } catch (IOException ex) { bigChunk = true; }
+        try { NetMessage.fromBytes(new LevelChunk(-1, new byte[10]).toBytes()); } catch (IOException ex) { negativeChunk = true; }
+        try { new LevelUpload(new byte[0]); } catch (IllegalArgumentException ex) { emptyUpload = true; }
+        try { new LevelDownload().getData(); } catch (IllegalStateException ex) { earlyData = true; }
+        check("level messages with impossible sizes or numbers are refused when decoded", tooBig && wrongCount && bigChunk && negativeChunk);
+        check("an empty level cannot be uploaded, and unfinished data cannot be read", emptyUpload && earlyData);
 
         // ---- nothing to a closed/unknown peer should blow up ----
         host.send(1, new PlayerLeft(2));

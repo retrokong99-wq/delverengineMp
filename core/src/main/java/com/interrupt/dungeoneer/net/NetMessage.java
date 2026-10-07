@@ -19,6 +19,8 @@ public abstract class NetMessage {
     public static final byte REJECT = 3;
     public static final byte PLAYER_STATE = 4;
     public static final byte PLAYER_LEFT = 5;
+    public static final byte LEVEL_BEGIN = 6;
+    public static final byte LEVEL_CHUNK = 7;
 
     public abstract byte type();
 
@@ -45,6 +47,8 @@ public abstract class NetMessage {
             case REJECT: message = Reject.read(in); break;
             case PLAYER_STATE: message = PlayerState.read(in); break;
             case PLAYER_LEFT: message = PlayerLeft.read(in); break;
+            case LEVEL_BEGIN: message = LevelBegin.read(in); break;
+            case LEVEL_CHUNK: message = LevelChunk.read(in); break;
             default: throw new IOException("Unknown message type " + type);
         }
 
@@ -204,6 +208,72 @@ public abstract class NetMessage {
 
         static PlayerLeft read(DataInputStream in) throws IOException {
             return new PlayerLeft(readPeerId(in));
+        }
+    }
+
+    /** Announces a level that is about to arrive in pieces. Only a host sends this. */
+    public static final class LevelBegin extends NetMessage {
+        public final int totalBytes;
+        public final int chunkCount;
+        /** CRC32 of the whole level, to catch a level that got damaged on the way. */
+        public final int crc32;
+
+        public LevelBegin(int totalBytes, int chunkCount, int crc32) {
+            this.totalBytes = totalBytes;
+            this.chunkCount = chunkCount;
+            this.crc32 = crc32;
+        }
+
+        @Override public byte type() { return LEVEL_BEGIN; }
+
+        @Override protected void writeBody(DataOutputStream out) throws IOException {
+            out.writeInt(totalBytes);
+            out.writeInt(chunkCount);
+            out.writeInt(crc32);
+        }
+
+        static LevelBegin read(DataInputStream in) throws IOException {
+            int totalBytes = in.readInt();
+            int chunkCount = in.readInt();
+            int crc32 = in.readInt();
+
+            if (totalBytes < 1 || totalBytes > NetProtocol.MAX_LEVEL_BYTES) throw new IOException("Bad level size " + totalBytes);
+
+            int expectedChunks = (totalBytes + NetProtocol.LEVEL_CHUNK_BYTES - 1) / NetProtocol.LEVEL_CHUNK_BYTES;
+            if (chunkCount != expectedChunks) throw new IOException("Level of " + totalBytes + " bytes cannot be " + chunkCount + " chunks");
+
+            return new LevelBegin(totalBytes, chunkCount, crc32);
+        }
+    }
+
+    /** One piece of a level. Pieces arrive in order, which TCP guarantees. */
+    public static final class LevelChunk extends NetMessage {
+        public final int index;
+        public final byte[] data;
+
+        public LevelChunk(int index, byte[] data) {
+            this.index = index;
+            this.data = data;
+        }
+
+        @Override public byte type() { return LEVEL_CHUNK; }
+
+        @Override protected void writeBody(DataOutputStream out) throws IOException {
+            out.writeInt(index);
+            out.writeShort(data.length);
+            out.write(data);
+        }
+
+        static LevelChunk read(DataInputStream in) throws IOException {
+            int index = in.readInt();
+            int length = in.readUnsignedShort();
+
+            if (index < 0 || index >= NetProtocol.MAX_LEVEL_CHUNKS) throw new IOException("Bad chunk number " + index);
+            if (length < 1 || length > NetProtocol.LEVEL_CHUNK_BYTES) throw new IOException("Bad chunk size " + length);
+
+            byte[] data = new byte[length];
+            in.readFully(data);
+            return new LevelChunk(index, data);
         }
     }
 }

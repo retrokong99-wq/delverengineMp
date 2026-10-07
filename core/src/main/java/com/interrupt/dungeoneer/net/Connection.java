@@ -28,7 +28,7 @@ final class Connection {
     private static final Logger LOG = Logger.getLogger("DelverNet");
 
     /** A peer that falls this far behind is dropped rather than letting memory grow without limit. */
-    private static final int MAX_QUEUED_FRAMES = 256;
+    private static final int MAX_QUEUED_FRAMES = 512;
 
     /** Queued after a final message to close the socket once that message has actually been written. */
     private static final byte[] CLOSE_AFTER_FLUSH = new byte[0];
