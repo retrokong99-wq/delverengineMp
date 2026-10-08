@@ -9,6 +9,7 @@ import com.interrupt.dungeoneer.entities.Stairs;
 import com.interrupt.dungeoneer.entities.triggers.TriggeredWarp;
 import com.interrupt.dungeoneer.game.GameData;
 import com.interrupt.dungeoneer.game.Level;
+import com.interrupt.dungeoneer.game.MultiplayerSession;
 import com.interrupt.dungeoneer.game.gamemode.GameModeInterface;
 import com.interrupt.dungeoneer.screens.*;
 import com.interrupt.utils.JsonUtil;
@@ -69,7 +70,15 @@ public class GameApplication extends Game {
 	}
 
 	@Override
+	public void render() {
+		// Pick up anything that arrived from the network, if this is a multiplayer game
+		MultiplayerSession.pollCurrent();
+		super.render();
+	}
+
+	@Override
 	public void dispose() {
+		MultiplayerSession.shutdown();
 		Gdx.app.log("DelverLifeCycle", "Goodbye");
 		mainScreen.dispose();
 		SteamApi.api.dispose();

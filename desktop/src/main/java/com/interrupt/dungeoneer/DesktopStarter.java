@@ -7,12 +7,43 @@ import com.badlogic.gdx.backends.lwjgl3.Lwjgl3ApplicationConfiguration;
 import com.interrupt.api.steam.NullSteamApi;
 import com.interrupt.api.steam.SteamApi;
 import com.interrupt.dungeoneer.game.Game;
+import com.interrupt.dungeoneer.game.MultiplayerSession;
 import com.interrupt.dungeoneer.game.Options;
+import com.interrupt.dungeoneer.net.NetProtocol;
+
+import java.io.IOException;
 
 public class DesktopStarter {
     public static void main(String[] args) {
+        // Multiplayer options: --host[=port], --join=address[:port], --name=yourname
+        boolean hostGame = false;
+        String joinAddress = null;
+        int netPort = NetProtocol.DEFAULT_PORT;
+        String playerName = "Player";
+
         if (args != null) {
             for (String arg : args) {
+                String lower = arg.toLowerCase();
+                if (lower.equals("--host") || lower.startsWith("--host=")) {
+                    hostGame = true;
+                    if (arg.length() > 7) netPort = parsePort(arg.substring(7), netPort);
+                    continue;
+                }
+                if (lower.startsWith("--join=")) {
+                    String target = arg.substring(7).trim();
+                    int colon = target.lastIndexOf(':');
+                    if (colon > 0) {
+                        netPort = parsePort(target.substring(colon + 1), netPort);
+                        target = target.substring(0, colon);
+                    }
+                    joinAddress = target;
+                    continue;
+                }
+                if (lower.startsWith("--name=")) {
+                    playerName = arg.substring(7);
+                    continue;
+                }
+
                 if (arg.toLowerCase().endsWith("debug=true")) {
                     Game.isDebugMode = true;
                 }
@@ -61,6 +92,35 @@ public class DesktopStarter {
         // Set target SteamAPI
         SteamApi.api = new NullSteamApi();
 
+        // Start multiplayer if asked to, otherwise the game stays single player
+        if (hostGame && joinAddress != null) {
+            System.out.println("Use either --host or --join, not both. Starting a single player game.");
+        }
+        else if (hostGame) {
+            try {
+                MultiplayerSession.startHost(netPort);
+            }
+            catch (IOException e) {
+                System.out.println("Could not host a game on port " + netPort + ": " + e.getMessage());
+            }
+        }
+        else if (joinAddress != null && !joinAddress.isEmpty()) {
+            MultiplayerSession.startClient(joinAddress, netPort, playerName);
+        }
+
         new Lwjgl3Application(new GameApplication(), config);
+    }
+
+    private static int parsePort(String text, int fallback) {
+        try {
+            int port = Integer.parseInt(text.trim());
+            if (port >= 1 && port <= 65535) return port;
+        }
+        catch (NumberFormatException ignored) {
+            // falls through to the message below
+        }
+
+        System.out.println("Ignoring the port '" + text + "', using " + fallback);
+        return fallback;
     }
 }

@@ -522,6 +522,9 @@ public class Game {
 		level.tick(timeModifiedDelta);
 		player.tick(level, delta * player.actorTimeScale, input);
 
+		// In a multiplayer game this sends our position to the others
+		if(MultiplayerSession.current != null) MultiplayerSession.current.tick(this, delta);
+
 		input.tick();
         Audio.tick(delta, player, level);
 		Game.instance.pathfindingManager.tick(delta);
